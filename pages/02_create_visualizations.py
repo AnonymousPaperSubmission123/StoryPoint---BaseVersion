@@ -820,99 +820,12 @@ def main():
 
     tab1, tab2 = st.tabs(
         [
-            "Use Large Language Model",
-            "Kickstart with example visualization",
+            "Paste your Vegalite Spec from Voyager",
+            "-",
         ]
     )
 
     with tab1:
-        # initialize the model
-        Conversation = model_initialisation(
-            MODEL=MODEL,
-            TEMPERATURE=TEMPERATURE,
-            K=K,
-            column_names=df.columns.tolist(),
-        )
-
-        # use chat GPT to write Code
-        gpt_input = st.text_input(
-            key="input_viz",
-            placeholder=(
-                "Briefly explain what you want to plot from your data. For example:"
-                " Plot the average salary per year"
-            ),
-            label=(
-                "💡Use GPT to help generating the code for the visualizations. Refer to the help symbol for ideas. "
-            ),
-            help=f"""# The dataframe has the following columns:
-            \n{[str(column) for column in df.columns]}\n
-            Possible prompts:\n
-            - Make a Scatterplot of <column x> and <column y>
-            - Create an ordered PieChart of ...
-            - Create a bar chart for the distribution of ...""",
-        )
-
-        if "json_decode_error" in st.session_state:
-            del st.session_state["json_decode_error"]
-            html(
-                """
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Flash Message Example</title>
-                <!-- Add jQuery library -->
-                <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-                <style>
-                    /* Style for the flash message container */
-                    #flash {
-                        position: fixed;
-                        top: 0;
-                        left: 0;
-                        width: 100%;
-                        background-color: #ff3333; /* Green background color */
-                        padding: 10px;
-                        text-align: left;
-                        display: none; /* hide initially */
-                        font-size: 12px; /* bigger font size */
-                        font-weight: bold; /* bold text */
-                        color: #FFFFFF; /* Black font color */
-                    }
-                </style> 
-            </head>
-            <body> 
-                <div id="flash">Error, please give the model more specification.</div>
-
-                <script>
-                    $(function() { 
-                        // Show and hide the flash message
-                        $('#flash').delay(500).fadeIn('normal', function() {
-                            $(this).delay(2500).fadeOut();
-                        });
-                    }); 
-                </script>
-            </body>
-            </html>
-
-            """,
-                height=30,
-            )
-
-        if st.button("Commit Prompt"):
-            # for development environment: measure time it takes for API request
-            start_time = time.time()
-            with st.spinner("Busy API Servers (5-10 seconds) ...."):
-                output = Conversation.run(input=gpt_input)
-                st.session_state.past.append(gpt_input)
-                st.session_state.generated.append(output)
-                st.session_state[f"prompt_commited_{current_graph}"] = True
-            # for development environment: measure time it takes for API request
-            end_time = time.time()
-            execution_time = end_time - start_time
-            print("It took " + str(round(execution_time, 2)) + "seconds")
-
-    # implement a carousel to show the visualizations created by multivision
-    with tab2:
-            
         # get the spec json without the data attribute
         multivision_spec = st.text_input("Insert Vega Spec here and confirm afterward")
 
@@ -928,26 +841,17 @@ def main():
                 .replace("True", "true")
                 .replace("False", "false")
             )
-            # also add the answer to the entity memory
-            st.session_state.entity_memory.save_context(
-                {"input": "Create a nice vega_lite visualization."},
-                {
-                    "output": str(
-                        multivision_spec
-                    )
-                    .replace("'", '"')
-                    .replace("True", "true")
-                    .replace("False", "false")
-                },
-            )
+            
             # go to the next step
             st.session_state[f"prompt_commited_{current_graph}"] = True
+        
+
 
     if f"prompt_commited_{current_graph}" in st.session_state:
         # display the success message later on
         container = st.empty()
 
-        st.subheader("3️⃣Choose one of the Graphs and adjust it")
+        
 
         try:
             # vega specs
@@ -964,140 +868,32 @@ def main():
         tab1, tab2 = st.tabs(["Business user", "Coding Expert"])
 
         with tab1:
-            # charts and their explanation
-            c1, _, c2 = st.columns([4, 1, 8])
-            with c1:
-                # give the user the possibility to adjust the plot
-                st.write("###### 2. Adjust the chart if needed")
+            
+        
+            # display the chart
+            # render the vega lite chart that came as response
+            # use only the values that are relevant for this visualization
+            df_spec = df.head(100).to_dict(orient="records")
+            # create the spec for gpt to create a description
+            vega_spec_copy = vega_spec.copy()
+            vega_spec_copy["data"] = {"values": df_spec}
+            # by parsing the json string of the response
+            st.vega_lite_chart(
+                height=320,
+                data=df,
+                spec=vega_spec,
+                use_container_width=True,
+            )      
+                
+            # let user confirm the visualization
+            confirm_visualization = st.button(
+                "Confirm visualization",
+                key="confirm_visualization",
+                on_click=handle_confirm_viz,
+                args=(current_graph, vega_spec, df),
+            )
 
-                gpt_input_adjust = st.text_input(
-                    key="input_viz_adjust",
-                    placeholder=(
-                        "Give the plot ... color, add the plot title ..."
-                    ),
-                    label="input_viz_adjust",
-                    label_visibility="collapsed",
-                )
-
-                with st.expander("Expand for Examples"):
-                    st.write(
-                        """
-                            - Add the Plot Title *PlotTitle*
-                            - Change the y-axis label to *yAxisLable*
-                            - Use *FeatureX* on the x-Axis
-                            - Use *FeatureX* as a color gradient
-                            - Make it a Scatterplot instead
-                            - Use timeUnit year --> only shows year on xaxis without months
-                            - to group a bar chart, prompt: use 'xOffset':{'field':'<grouping field>'} within encoding
-                            - make the information hoverable by including variables into the tooltip
-                            - use aggregate by mean to get mean values for an axis
-                            - use transform calculation to calculate the deaths divided by population 
-                            """
-                    )
-
-                # give the information, which plot shall be adjusted
-                # chart option contains values in the form "Graph x"
-                gpt_input_adjust = f"Adjust the chart " + gpt_input_adjust
-
-            with c2:
-                # display the chart
-                # render the vega lite chart that came as response
-                # use only the values that are relevant for this visualization
-                df_spec = df.head(100).to_dict(orient="records")
-                # create the spec for gpt to create a description
-                vega_spec_copy = vega_spec.copy()
-                vega_spec_copy["data"] = {"values": df_spec}
-                # by parsing the json string of the response
-                st.vega_lite_chart(
-                    height=320,
-                    data=df,
-                    spec=vega_spec,
-                    use_container_width=True,
-                )
-
-            # new columns for prettier layout with the two buttons
-            c1, _, c2 = st.columns([4, 1, 8])
-            with c1:
-                if st.button(
-                    "Adjust visualization", key="adjust_visualization"
-                ):
-                    print(gpt_input_adjust)
-                    output = Conversation.run(input=gpt_input_adjust)
-                    st.session_state.past.append(gpt_input_adjust)
-                    st.session_state.generated.append(output)
-                    print(gpt_input_adjust)
-                    # rerun so that the visualization changes
-                    st.experimental_rerun()
-            with c2:
-                col1, col2 = st.columns([5, 2])
-                # disable the button if the plot has not been adjusted by the user yet
-                if len(st.session_state["generated"]) > 1:
-                    st.session_state["button_disabled"] = False
-                else:
-                    st.session_state["button_disabled"] = True
-                with col1:
-                    st.button(
-                        "Undo last Changes",
-                        key="undo_last_changes",
-                        on_click=handle_undo_changes,
-                        disabled=st.session_state["button_disabled"],
-                    )
-                with col2:
-                    # let user confirm the visualization
-                    confirm_visualization = st.button(
-                        "Confirm visualization",
-                        key="confirm_visualization",
-                        on_click=handle_confirm_viz,
-                        args=(current_graph, vega_spec, df),
-                    )
-
-        with tab2:
-            # charts and their explanation
-            c1, _, c2 = st.columns([4, 1, 8])
-            with c1:
-                # give the user the possibility to adjust the plot
-                st.write("###### 2. Adjust the chart if needed")
-                content = st_ace(
-                    language="json5", key="code-editor-one", value=vega_spec
-                )
-                if content:
-                    print("content")
-
-            with c2:
-                # display the chart that was selected in the chart_option selectbox
-                try:
-                    # render the vega lite chart that came as response
-                    # by parsing the json string of the response
-                    st.vega_lite_chart(
-                        height=320,
-                        data=df,
-                        spec=vega_spec,
-                    )
-                except Exception as e:
-                    st.write(e)
-
-            # new columns for prettier layout with the two buttons
-            c1, _, c2 = st.columns([4, 1, 8])
-            with c1:
-                if st.button(
-                    "Adjust visualization",
-                    key="adjust_visualization_coding_expert",
-                ):
-                    # append the changed visualization from the Ace editor called content
-                    # to the chatGPT conversation
-                    vega_spec = get_vega_spec()
-
-                    # append it to the response
-                    st.session_state.generated.append(vega_spec)
-                    st.experimental_rerun()
-            with c2:
-                # let user confirm the visualization
-                confirm_viz = st.button(
-                    "Confirm visualization",
-                    key="confirm_visualization_coding_expert",
-                    on_click=handle_confirm_viz,
-                    args=(current_graph, vega_spec, df),
-                )
+       
 
     if f"visualization_{current_graph}_confirmed" in st.session_state:
         # DP2
@@ -1211,7 +1007,7 @@ def main():
                         # delete entity memory to start a new conversation with chat model
                         del st.session_state["generated"]
                         del st.session_state["past"]
-                        del st.session_state["entity_memory"]
+                        
                         # create a state for a finished data story
                         st.session_state["finished_data_story"] = True
                         switch_page("data story 1")
@@ -1226,7 +1022,7 @@ def main():
                         # delete entity memory to start a new conversation with chat model
                         del st.session_state["generated"]
                         del st.session_state["past"]
-                        del st.session_state["entity_memory"]
+                        
 
                         switch_page("create visualizations")
 
@@ -1327,7 +1123,7 @@ def main():
                             # delete entity memory to start a new conversation with chat model
                             del st.session_state["generated"]
                             del st.session_state["past"]
-                            del st.session_state["entity_memory"]
+                            
                             increase_page_counter()
                             increase_graph_counter()
                             switch_page("create visualizations")
