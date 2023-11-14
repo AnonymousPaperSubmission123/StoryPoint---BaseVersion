@@ -313,8 +313,8 @@ def main():
             st.write(f"Choose the Layout for page {page+1}:")
             images = []
             for file in [
-                "./static/img/example_dashboard_1.png",
-                "./static/img/example_dashboard_2.png",
+                "./static/img/example_dashboard_1.PNG",
+                "./static/img/example_dashboard_2.PNG",
             ]:
                 with open(file, "rb") as image:
                     encoded = base64.b64encode(image.read()).decode()
